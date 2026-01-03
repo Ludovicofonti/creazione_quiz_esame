@@ -1,0 +1,7 @@
+/.env
+/.venv
+/domande_generate.json
+/domande_generate_gemma3.json
+/easydataset_repository
+/Estratto_psicologia_sociale copy.json
+/__pycache__
