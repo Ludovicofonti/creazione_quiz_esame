@@ -17,8 +17,11 @@ client = Client(
     }
 )
 
-if not os.environ.get("OLLAMA_API_KEY"):
-    raise RuntimeError("Variabile d'ambiente OLLAMA_API_KEY non impostata")
+import os
+
+API_KEY = os.environ.get("OLLAMA_API_KEY")
+if not API_KEY:
+    raise RuntimeError("OLLAMA_API_KEY non configurata")
 
 
 def build_prompt(content: str, summary: str, n: int) -> str:
