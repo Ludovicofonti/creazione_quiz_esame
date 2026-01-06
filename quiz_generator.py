@@ -51,6 +51,8 @@ REGOLE OBBLIGATORIE:
 - distrattori plausibili
 - non inventare informazioni
 - livello universitario
+- per ogni domanda, includi un ESTRATTO DEL TESTO fornito
+  che giustifichi chiaramente la risposta corretta
 
 FORMATO DI OUTPUT:
 Restituisci SOLO JSON valido, senza testo extra.
@@ -64,7 +66,8 @@ Restituisci SOLO JSON valido, senza testo extra.
       "C": "...",
       "D": "..."
     }},
-    "correct_answer": "A"
+    "correct_answer": "A",
+    "explanation": "Estratto testuale rilevante dal testo di riferimento"
   }}
 ]
 """
