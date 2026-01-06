@@ -1,12 +1,12 @@
 import streamlit as st
 import random
 
-from material_loader import (
-    load_material,
-    group_by_summary
-)
+from material_loader import load_material, group_by_summary
 from quiz_generator import generate_questions, filter_duplicate_questions
 
+# =========================
+# SESSION STATE
+# =========================
 if "seen_questions" not in st.session_state:
     st.session_state["seen_questions"] = set()
 
@@ -15,7 +15,7 @@ if "seen_questions" not in st.session_state:
 # =========================
 JSON_PATH = "Estratto_psicologia_sociale.json"
 MAX_DOMANDE = 20
-MAX_ATTEMPT = 5  # max tentativi per rigenerare domande duplicate
+MAX_ATTEMPT = 5
 
 st.set_page_config(
     page_title="Generatore Quiz",
@@ -31,15 +31,17 @@ materials = load_material(JSON_PATH)
 grouped = group_by_summary(materials)
 
 # =========================
-# UI — SELEZIONE ARGOMENTO
+# UI — SELEZIONE ARGOMENTI
 # =========================
 ALL_TOPICS_LABEL = "Tutti gli argomenti (casuale)"
 
-topics = [ALL_TOPICS_LABEL] + sorted(grouped.keys())
+topic_options = [ALL_TOPICS_LABEL] + sorted(grouped.keys())
 
-selected_topic = st.selectbox(
-    "Scegli l'argomento:",
-    topics
+selected_topics = st.multiselect(
+    "Scegli uno o più argomenti:",
+    topic_options,
+    default=[],
+    placeholder="Seleziona uno o più argomenti"
 )
 
 num_questions = st.slider(
@@ -52,21 +54,24 @@ num_questions = st.slider(
 # =========================
 # LOGICA ESTRATTI
 # =========================
-def build_content_for_topic(materials, n, extra=3):
+def build_content_from_topics(topic_list, n, extra=3):
     """
-    Seleziona n+extra estratti casuali per dare più varietà.
-    Se non bastano, ripete alcuni estratti.
+    Unisce estratti da più argomenti.
+    Campiona più estratti per aumentare varietà.
     """
-    total_needed = n + extra
-    if not materials:
+    all_materials = []
+
+    for topic in topic_list:
+        all_materials.extend(grouped.get(topic, []))
+
+    if not all_materials:
         return ""
 
-    if len(materials) >= total_needed:
-        sampled = random.sample(materials, total_needed)
-    else:
-        sampled = []
-        while len(sampled) < total_needed:
-            sampled.append(random.choice(materials))
+    total_needed = n + extra
+
+    sampled = []
+    while len(sampled) < total_needed:
+        sampled.append(random.choice(all_materials))
 
     return "\n\n".join(m["content"] for m in sampled)
 
@@ -74,49 +79,52 @@ def build_content_for_topic(materials, n, extra=3):
 # GENERAZIONE QUIZ
 # =========================
 if st.button("🚀 Genera domande"):
-    with st.spinner("Sto creando le domande..."):
+    if not selected_topics:
+        st.warning("⚠️ Seleziona almeno un argomento.")
+    else:
+        with st.spinner("Sto creando le domande..."):
 
-        if selected_topic == ALL_TOPICS_LABEL:
-            # tutti gli argomenti
-            contents_list = []
-            for summary, mats in grouped.items():
-                contents_list.append(build_content_for_topic(mats, num_questions))
-            final_content = "\n\n".join(contents_list)
-            final_summary = "Quiz su tutti gli argomenti del corso"
-        else:
-            final_content = build_content_for_topic(grouped[selected_topic], num_questions)
-            final_summary = selected_topic
+            if ALL_TOPICS_LABEL in selected_topics:
+                chosen_topics = list(grouped.keys())
+                final_summary = "Quiz su tutti gli argomenti del corso"
+            else:
+                chosen_topics = selected_topics
+                final_summary = "Quiz su: " + ", ".join(chosen_topics)
 
-        final_questions = []
-        attempts = 0
+            final_questions = []
+            attempts = 0
 
-        while len(final_questions) < num_questions and attempts < MAX_ATTEMPT:
-            remaining = num_questions - len(final_questions)
-            # generiamo le domande mancanti
-            questions = generate_questions(
-                content=final_content,
-                summary=final_summary,
-                n=remaining
-            )
-            # filtriamo i duplicati
-            questions = filter_duplicate_questions(
-                questions,
-                st.session_state["seen_questions"]
-            )
-            final_questions.extend(questions)
-            attempts += 1
+            while len(final_questions) < num_questions and attempts < MAX_ATTEMPT:
+                remaining = num_questions - len(final_questions)
 
-        st.session_state["questions"] = final_questions
+                final_content = build_content_from_topics(
+                    chosen_topics,
+                    remaining
+                )
 
-    st.success("✅ Quiz generato!")
+                questions = generate_questions(
+                    content=final_content,
+                    summary=final_summary,
+                    n=remaining
+                )
+
+                questions = filter_duplicate_questions(
+                    questions,
+                    st.session_state["seen_questions"]
+                )
+
+                final_questions.extend(questions)
+                attempts += 1
+
+            st.session_state["questions"] = final_questions
+
+        st.success("✅ Quiz generato!")
 
 # =========================
 # VISUALIZZAZIONE QUIZ
 # =========================
 if "questions" in st.session_state:
-    questions = st.session_state["questions"]
-
-    for i, q in enumerate(questions, 1):
+    for i, q in enumerate(st.session_state["questions"], 1):
         st.markdown(f"### ❓ Domanda {i}")
         st.write(q["question"])
 
@@ -139,5 +147,10 @@ if "questions" in st.session_state:
                     f"❌ Risposta sbagliata. "
                     f"La risposta corretta è **{correct}. {options[correct]}**"
                 )
+
+            # 🔍 Mostra spiegazione / estratto
+            if "explanation" in q and q["explanation"].strip():
+                with st.expander("📖 Mostra estratto dal testo"):
+                    st.write(q["explanation"])
 
         st.divider()
