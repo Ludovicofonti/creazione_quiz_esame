@@ -1,8 +1,14 @@
 import streamlit as st
 import random
 
-from material_loader import load_material, group_by_summary
-from quiz_generator import generate_questions, filter_duplicate_questions
+from material_loader import (
+    load_material,
+    group_by_summary
+)
+from quiz_generator import (
+    generate_questions,
+    filter_duplicate_questions
+)
 
 # =========================
 # SESSION STATE
@@ -13,9 +19,12 @@ if "seen_questions" not in st.session_state:
 # =========================
 # CONFIG
 # =========================
-JSON_PATH = "Estratto_psicologia_sociale.json"
 MAX_DOMANDE = 20
-MAX_ATTEMPT = 5
+
+SUBJECTS = {
+    "Psicologia sociale": "psicologia_sociale.json",
+    "Imprenditorialità": "imprenditorialità.json",
+}
 
 st.set_page_config(
     page_title="Generatore Quiz",
@@ -25,24 +34,34 @@ st.set_page_config(
 st.title("📚 Generatore di quiz per lo studio")
 
 # =========================
+# SELEZIONE MATERIA
+# =========================
+st.subheader("📘 Seleziona la materia")
+
+selected_subject = st.selectbox(
+    "Materia:",
+    list(SUBJECTS.keys())
+)
+
+JSON_PATH = SUBJECTS[selected_subject]
+
+# =========================
 # LOAD MATERIALS
 # =========================
 materials = load_material(JSON_PATH)
 grouped = group_by_summary(materials)
 
 # =========================
-# UI — SELEZIONE ARGOMENTI
+# UI — SELEZIONE CAPITOLI
 # =========================
-ALL_TOPICS_LABEL = "Tutti gli argomenti (casuale)"
-
-topic_options = [ALL_TOPICS_LABEL] + sorted(grouped.keys())
+topics = sorted(grouped.keys())
 
 selected_topics = st.multiselect(
-    "Scegli uno o più argomenti:",
-    topic_options,
-    default=[],
-    placeholder="Seleziona uno o più argomenti"
+    "Seleziona capitoli",
+    options=topics
 )
+
+use_all_topics = st.checkbox("Usa tutti gli argomenti", value=False)
 
 num_questions = st.slider(
     "Quante domande vuoi generare?",
@@ -54,24 +73,16 @@ num_questions = st.slider(
 # =========================
 # LOGICA ESTRATTI
 # =========================
-def build_content_from_topics(topic_list, n, extra=3):
-    """
-    Unisce estratti da più argomenti.
-    Campiona più estratti per aumentare varietà.
-    """
-    all_materials = []
-
-    for topic in topic_list:
-        all_materials.extend(grouped.get(topic, []))
-
-    if not all_materials:
+def build_content_for_topic(materials, n):
+    if not materials:
         return ""
 
-    total_needed = n + extra
-
-    sampled = []
-    while len(sampled) < total_needed:
-        sampled.append(random.choice(all_materials))
+    if len(materials) >= n:
+        sampled = random.sample(materials, n)
+    else:
+        sampled = []
+        while len(sampled) < n:
+            sampled.append(random.choice(materials))
 
     return "\n\n".join(m["content"] for m in sampled)
 
@@ -79,52 +90,56 @@ def build_content_from_topics(topic_list, n, extra=3):
 # GENERAZIONE QUIZ
 # =========================
 if st.button("🚀 Genera domande"):
-    if not selected_topics:
-        st.warning("⚠️ Seleziona almeno un argomento.")
-    else:
-        with st.spinner("Sto creando le domande..."):
+    with st.spinner("Sto creando le domande..."):
+        contents = []
 
-            if ALL_TOPICS_LABEL in selected_topics:
-                chosen_topics = list(grouped.keys())
-                final_summary = "Quiz su tutti gli argomenti del corso"
-            else:
-                chosen_topics = selected_topics
-                final_summary = "Quiz su: " + ", ".join(chosen_topics)
+        if use_all_topics or not selected_topics:
+            topics_to_use = grouped.keys()
+            final_summary = "Quiz su tutti gli argomenti del corso"
+        else:
+            topics_to_use = selected_topics
+            final_summary = "Quiz su: " + ", ".join(selected_topics)
 
-            final_questions = []
-            attempts = 0
-
-            while len(final_questions) < num_questions and attempts < MAX_ATTEMPT:
-                remaining = num_questions - len(final_questions)
-
-                final_content = build_content_from_topics(
-                    chosen_topics,
-                    remaining
+        for topic in topics_to_use:
+            contents.append(
+                build_content_for_topic(
+                    grouped[topic],
+                    max(1, num_questions // len(topics_to_use))
                 )
+            )
 
-                questions = generate_questions(
-                    content=final_content,
-                    summary=final_summary,
-                    n=remaining
-                )
+        final_content = "\n\n".join(contents)
 
-                questions = filter_duplicate_questions(
-                    questions,
-                    st.session_state["seen_questions"]
-                )
+        generated = []
+        attempts = 0
 
-                final_questions.extend(questions)
-                attempts += 1
+        while len(generated) < num_questions and attempts < 5:
+            attempts += 1
 
-            st.session_state["questions"] = final_questions
+            new_questions = generate_questions(
+                content=final_content,
+                summary=final_summary,
+                n=num_questions - len(generated)
+            )
 
-        st.success("✅ Quiz generato!")
+            new_questions = filter_duplicate_questions(
+                new_questions,
+                st.session_state["seen_questions"]
+            )
+
+            generated.extend(new_questions)
+
+        st.session_state["questions"] = generated
+
+    st.success("✅ Quiz generato!")
 
 # =========================
 # VISUALIZZAZIONE QUIZ
 # =========================
 if "questions" in st.session_state:
-    for i, q in enumerate(st.session_state["questions"], 1):
+    questions = st.session_state["questions"]
+
+    for i, q in enumerate(questions, 1):
         st.markdown(f"### ❓ Domanda {i}")
         st.write(q["question"])
 
@@ -148,9 +163,9 @@ if "questions" in st.session_state:
                     f"La risposta corretta è **{correct}. {options[correct]}**"
                 )
 
-            # 🔍 Mostra spiegazione / estratto
-            if "explanation" in q and q["explanation"].strip():
-                with st.expander("📖 Mostra estratto dal testo"):
-                    st.write(q["explanation"])
+            if "explanation" in q:
+                st.info(
+                    f"📖 **Spiegazione (dal testo):**\n\n{q['explanation']}"
+                )
 
         st.divider()
