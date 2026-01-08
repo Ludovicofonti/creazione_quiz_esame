@@ -23,7 +23,7 @@ MAX_DOMANDE = 20
 
 SUBJECTS = {
     "Psicologia sociale": "psicologia_sociale.json",
-    "Imprenditorialità": "imprenditorialità.json",
+    "Imprenditorialità": "Imprenditorialità.json",
 }
 
 st.set_page_config(
