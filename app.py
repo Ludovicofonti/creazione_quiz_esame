@@ -94,17 +94,37 @@ if st.button("🚀 Genera domande"):
         contents = []
 
         if use_all_topics or not selected_topics:
-            topics_to_use = grouped.keys()
+            topics_to_use = list(grouped.keys())
             final_summary = "Quiz su tutti gli argomenti del corso"
         else:
             topics_to_use = selected_topics
             final_summary = "Quiz su: " + ", ".join(selected_topics)
 
-        for topic in topics_to_use:
+        num_topics = len(topics_to_use)
+
+        # =========================
+        # DISTRIBUZIONE DOMANDE
+        # =========================
+        if num_questions < num_topics:
+            # almeno 1 domanda per capitolo
+            questions_per_topic = [1] * num_topics
+        else:
+            base = num_questions // num_topics
+            remainder = num_questions % num_topics
+
+            questions_per_topic = [
+                base + 1 if i < remainder else base
+                for i in range(num_topics)
+            ]
+
+        # =========================
+        # COSTRUZIONE CONTENUTO
+        # =========================
+        for topic, q_per_topic in zip(topics_to_use, questions_per_topic):
             contents.append(
                 build_content_for_topic(
                     grouped[topic],
-                    max(1, num_questions // len(topics_to_use))
+                    q_per_topic
                 )
             )
 
@@ -112,14 +132,15 @@ if st.button("🚀 Genera domande"):
 
         generated = []
         attempts = 0
+        target_questions = sum(questions_per_topic)
 
-        while len(generated) < num_questions and attempts < 5:
+        while len(generated) < target_questions and attempts < 5:
             attempts += 1
 
             new_questions = generate_questions(
                 content=final_content,
                 summary=final_summary,
-                n=num_questions - len(generated)
+                n=target_questions - len(generated)
             )
 
             new_questions = filter_duplicate_questions(
@@ -131,7 +152,7 @@ if st.button("🚀 Genera domande"):
 
         st.session_state["questions"] = generated
 
-    st.success("✅ Quiz generato!")
+    st.success(f"✅ Quiz generato! ({len(st.session_state['questions'])} domande)")
 
 # =========================
 # VISUALIZZAZIONE QUIZ
