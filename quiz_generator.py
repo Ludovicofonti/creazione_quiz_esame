@@ -30,8 +30,51 @@ client = Client(
 # ==========================
 # PROMPT
 # ==========================
-def build_prompt(content: str, summary: str, n: int) -> str:
+def build_prompt(
+    content: str,
+    summary: str,
+    n: int,
+    question_type: str
+) -> str:
     content = content[:MAX_CHARS]
+
+    if question_type == "multiple_choice":
+        task = f"Genera {n} domande a scelta multipla."
+        rules = """
+REGOLE OBBLIGATORIE:
+- 4 opzioni (A, B, C, D)
+- una sola risposta corretta
+- distrattori plausibili
+- per ogni domanda includi un ESTRATTO DEL TESTO fornito
+  che giustifichi chiaramente la risposta corretta
+"""
+        example = """
+{
+  "question": "...",
+  "options": {
+    "A": "...",
+    "B": "...",
+    "C": "...",
+    "D": "..."
+  },
+  "correct_answer": "A",
+  "explanation": "Estratto testuale rilevante dal testo di riferimento"
+}
+"""
+    else:
+        task = f"Genera {n} domande a RISPOSTA APERTA."
+        rules = """
+REGOLE OBBLIGATORIE:
+- nessuna opzione di risposta
+- la spiegazione deve descrivere cosa una risposta corretta
+  dovrebbe includere, facendo riferimento al testo
+"""
+        example = """
+{
+  "question": "...",
+  "explanation": "Spiegazione testuale basata sul testo di riferimento"
+}
+"""
 
     return f"""
 Sei un assistente esperto in didattica universitaria.
@@ -43,32 +86,20 @@ TESTO DI RIFERIMENTO (estratti coerenti sullo stesso argomento):
 {content}
 
 COMPITO:
-Genera {n} domande a scelta multipla.
+{task}
 
-REGOLE OBBLIGATORIE:
-- 4 opzioni (A, B, C, D)
-- una sola risposta corretta
-- distrattori plausibili
-- non inventare informazioni
+VINCOLI GENERALI:
 - livello universitario
-- per ogni domanda, includi un ESTRATTO DEL TESTO fornito
-  che giustifichi chiaramente la risposta corretta
+- non inventare informazioni
+- usa SOLO il testo fornito
+
+{rules}
 
 FORMATO DI OUTPUT:
 Restituisci SOLO JSON valido, senza testo extra.
 
 [
-  {{
-    "question": "...",
-    "options": {{
-      "A": "...",
-      "B": "...",
-      "C": "...",
-      "D": "..."
-    }},
-    "correct_answer": "A",
-    "explanation": "Estratto testuale rilevante dal testo di riferimento"
-  }}
+  {example}
 ]
 """
 
@@ -88,6 +119,7 @@ def extract_json(text: str) -> str:
 def shuffle_question_options(question: dict) -> dict:
     """
     Mescola le opzioni e aggiorna correttamente correct_answer.
+    Usata SOLO per domande a crocette.
     """
     options = question["options"]
     correct_letter = question["correct_answer"]
@@ -117,10 +149,11 @@ def generate_questions(
     content: str,
     summary: str,
     n: int = 5,
+    question_type: str = "multiple_choice",
     retries: int = 1
 ) -> list[dict]:
 
-    prompt = build_prompt(content, summary, n)
+    prompt = build_prompt(content, summary, n, question_type)
 
     response = client.chat(
         model=OLLAMA_MODEL,
@@ -136,8 +169,10 @@ def generate_questions(
         json_text = extract_json(raw_output)
         questions = json.loads(json_text)
 
-        for q in questions:
-            shuffle_question_options(q)
+        # Shuffle SOLO per domande a crocette
+        if question_type == "multiple_choice":
+            for q in questions:
+                shuffle_question_options(q)
 
         return questions
 
@@ -148,6 +183,7 @@ def generate_questions(
                 content=content,
                 summary=summary,
                 n=n,
+                question_type=question_type,
                 retries=retries - 1
             )
 
@@ -155,10 +191,13 @@ def generate_questions(
         print(raw_output)
         raise ValueError("Output non è JSON valido") from e
 
+# ==========================
+# DEDUPLICATION
+# ==========================
 def normalize_text(text: str) -> str:
     text = text.lower()
-    text = re.sub(r"[^\w\s]", "", text)  # rimuove punteggiatura
-    text = re.sub(r"\s+", " ", text)    # normalizza spazi
+    text = re.sub(r"[^\w\s]", "", text)
+    text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 def question_fingerprint(question: dict) -> str:

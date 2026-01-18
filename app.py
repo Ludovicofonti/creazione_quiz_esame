@@ -24,6 +24,7 @@ MAX_DOMANDE = 20
 SUBJECTS = {
     "Psicologia sociale": "psicologia_sociale.json",
     "Imprenditorialità": "Imprenditorialità.json",
+    "Archeologia dei paesaggi": "archeologia_dei_paesaggi.json"
 }
 
 st.set_page_config(
@@ -50,6 +51,22 @@ JSON_PATH = SUBJECTS[selected_subject]
 # =========================
 materials = load_material(JSON_PATH)
 grouped = group_by_summary(materials)
+
+# =========================
+# TIPO DI QUIZ
+# =========================
+st.subheader("🧠 Tipo di quiz")
+
+quiz_type_label = st.radio(
+    "Che tipo di domande vuoi generare?",
+    options=["Domande a crocette", "Domande a risposta aperta"]
+)
+
+QUESTION_TYPE = (
+    "multiple_choice"
+    if quiz_type_label == "Domande a crocette"
+    else "open"
+)
 
 # =========================
 # UI — SELEZIONE CAPITOLI
@@ -106,7 +123,6 @@ if st.button("🚀 Genera domande"):
         # DISTRIBUZIONE DOMANDE
         # =========================
         if num_questions < num_topics:
-            # almeno 1 domanda per capitolo
             questions_per_topic = [1] * num_topics
         else:
             base = num_questions // num_topics
@@ -140,7 +156,8 @@ if st.button("🚀 Genera domande"):
             new_questions = generate_questions(
                 content=final_content,
                 summary=final_summary,
-                n=target_questions - len(generated)
+                n=target_questions - len(generated),
+                question_type=QUESTION_TYPE
             )
 
             new_questions = filter_duplicate_questions(
@@ -151,6 +168,7 @@ if st.button("🚀 Genera domande"):
             generated.extend(new_questions)
 
         st.session_state["questions"] = generated
+        st.session_state["quiz_type"] = QUESTION_TYPE
 
     st.success(f"✅ Quiz generato! ({len(st.session_state['questions'])} domande)")
 
@@ -159,32 +177,53 @@ if st.button("🚀 Genera domande"):
 # =========================
 if "questions" in st.session_state:
     questions = st.session_state["questions"]
+    quiz_type = st.session_state.get("quiz_type", "multiple_choice")
 
     for i, q in enumerate(questions, 1):
         st.markdown(f"### ❓ Domanda {i}")
         st.write(q["question"])
 
-        options = q["options"]
-        correct = q["correct_answer"]
+        # =========================
+        # DOMANDE A CROCETTE
+        # =========================
+        if quiz_type == "multiple_choice":
+            options = q["options"]
+            correct = q["correct_answer"]
 
-        selected = st.radio(
-            "Seleziona una risposta:",
-            options=list(options.keys()),
-            format_func=lambda x: f"{x}. {options[x]}",
-            index=None,
-            key=f"question_{i}"
-        )
+            selected = st.radio(
+                "Seleziona una risposta:",
+                options=list(options.keys()),
+                format_func=lambda x: f"{x}. {options[x]}",
+                index=None,
+                key=f"question_{i}"
+            )
 
-        if selected is not None:
-            if selected == correct:
-                st.success("✅ Risposta corretta!")
-            else:
-                st.error(
-                    f"❌ Risposta sbagliata. "
-                    f"La risposta corretta è **{correct}. {options[correct]}**"
-                )
+            if selected is not None:
+                if selected == correct:
+                    st.success("✅ Risposta corretta!")
+                else:
+                    st.error(
+                        f"❌ Risposta sbagliata. "
+                        f"La risposta corretta è **{correct}. {options[correct]}**"
+                    )
 
-            if "explanation" in q:
+                if "explanation" in q:
+                    st.info(
+                        f"📖 **Spiegazione (dal testo):**\n\n{q['explanation']}"
+                    )
+
+        # =========================
+        # DOMANDE APERTE
+        # =========================
+        else:
+            st.markdown(
+                "_Rispondi mentalmente o a voce, poi clicca per vedere la spiegazione._"
+            )
+
+            if st.button(
+                "📖 Mostra spiegazione",
+                key=f"show_explanation_{i}"
+            ):
                 st.info(
                     f"📖 **Spiegazione (dal testo):**\n\n{q['explanation']}"
                 )
